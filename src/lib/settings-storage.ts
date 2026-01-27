@@ -8,7 +8,9 @@ import { logger } from "@/lib/logger";
 import type { AppSettings, Locale } from "@/types";
 import { allPreReleaseTypes } from "@/types";
 
-const dataFilePath = path.join(process.cwd(), "data", "settings.json");
+// process.env.DATA_ROOT or process.cwd
+const DATA_ROOT = process.env.DATA_ROOT || process.cwd();
+const dataFilePath = path.join(DATA_ROOT, "data", "settings.json");
 const dataDirPath = path.dirname(dataFilePath);
 
 const hasGithubToken = Boolean(process.env.GITHUB_ACCESS_TOKEN?.trim());

@@ -6,9 +6,10 @@ import { logger } from "@/lib/logger";
 import type { Repository } from "@/types";
 
 // Resolve the path to the data file.
-// Using process.cwd() ensures the path is correct whether running in dev or prod.
-const dataFilePath = path.join(process.cwd(), "data", "repositories.json");
-const dataDirPath = path.dirname(dataFilePath);
+// Using process.env.DATA_ROOT or process.cwd() ensures the path is correct whether running in dev or prod.
+const DATA_ROOT = process.env.DATA_ROOT || process.cwd();
+const dataFilePath = path.join(DATA_ROOT, "data", "repositories.json");
+const dataDirPath = path.dirname(reposFilePath);
 
 async function ensureDataFileExists() {
   try {
