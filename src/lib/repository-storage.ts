@@ -9,7 +9,7 @@ import type { Repository } from "@/types";
 // Using process.env.DATA_ROOT or process.cwd() ensures the path is correct whether running in dev or prod.
 const DATA_ROOT = process.env.DATA_ROOT || process.cwd();
 const dataFilePath = path.join(DATA_ROOT, "data", "repositories.json");
-const dataDirPath = path.dirname(reposFilePath);
+const dataDirPath = path.dirname(dataFilePath);
 
 async function ensureDataFileExists() {
   try {
