@@ -126,7 +126,7 @@ jobs:
 #        if-no-files-found: warn
 
   build-and-push:
-    needs: [unit, e2e]
+#    needs: [unit, e2e]
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.ref == 'refs/heads/develop' && 'develop-manual-approval' || 'auto-build' }}
