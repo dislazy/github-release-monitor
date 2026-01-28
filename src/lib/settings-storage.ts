@@ -4,11 +4,11 @@ import { logger } from "@/lib/logger";
 import type { AppSettings, Locale } from "@/types";
 import { allPreReleaseTypes } from "@/types";
 import { defaultLocale, locales } from "@/i18n/routing";
-
 import { loadGistFile, saveGistFile } from "./gist-storage";
 
-const CACHE_CHECK_INTERVAL_MS = 500;
-
+// =======================
+// 默认设置
+// =======================
 const defaultSettings: AppSettings = {
   timeFormat: "24h",
   locale: "en",
@@ -27,10 +27,14 @@ const defaultSettings: AppSettings = {
   appriseFormat: "text",
 };
 
+// =======================
+// 内存缓存
+// =======================
 let cachedSettings: AppSettings | null = null;
 let lastCacheCheck = 0;
+const CACHE_CHECK_INTERVAL_MS = 500;
 
-// 深度 clone，保持原来的语义
+// 深度 clone，防止外部修改
 function cloneSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
@@ -41,8 +45,24 @@ function cloneSettings(settings: AppSettings): AppSettings {
   };
 }
 
-// 从 Gist 加载并刷新内存缓存
+// =======================
+// 判断是否在 build 阶段
+// Next.js 在 build 阶段会定义环境变量
+// 也可用 process.env.NEXT_PHASE 或 process.env.NEXT_PUBLIC_xxx
+// =======================
+const IS_BUILD = process.env.NEXT_PHASE === "phase-production-build";
+
+// =======================
+// 刷新缓存
+// =======================
 async function refreshCache(): Promise<void> {
+  if (IS_BUILD) {
+    // 构建阶段直接使用默认值，不访问网络
+    cachedSettings = cloneSettings(defaultSettings);
+    lastCacheCheck = Date.now();
+    return;
+  }
+
   try {
     const data = (await loadGistFile<AppSettings>("settings.json")) ?? {};
     cachedSettings = cloneSettings({ ...defaultSettings, ...data });
@@ -53,7 +73,9 @@ async function refreshCache(): Promise<void> {
   lastCacheCheck = Date.now();
 }
 
+// =======================
 // 确保缓存有效
+// =======================
 async function ensureCache(): Promise<void> {
   if (!cachedSettings) {
     await refreshCache();
@@ -61,20 +83,20 @@ async function ensureCache(): Promise<void> {
   }
 
   const now = Date.now();
-  if (now - lastCacheCheck < CACHE_CHECK_INTERVAL_MS) return;
-
-  // 触发一次刷新（Gist 有缓存保护，1 分钟内不会重复请求）
-  await refreshCache();
+  if (now - lastCacheCheck >= CACHE_CHECK_INTERVAL_MS) {
+    await refreshCache();
+  }
 }
 
-// 对外接口：获取全部设置
+// =======================
+// 对外接口
+// =======================
 export async function getSettings(): Promise<AppSettings> {
   await ensureCache();
   if (!cachedSettings) throw new Error("Settings cache is unavailable");
   return cloneSettings(cachedSettings);
 }
 
-// 对外接口：获取 locale
 export async function getLocaleSetting(): Promise<Locale> {
   await ensureCache();
   const locale = cachedSettings?.locale;
@@ -83,19 +105,31 @@ export async function getLocaleSetting(): Promise<Locale> {
     : defaultLocale;
 }
 
-// 对外接口：保存设置
 export async function saveSettings(settings: AppSettings): Promise<void> {
+  if (IS_BUILD) {
+    // 构建阶段禁止写 Gist
+    cachedSettings = cloneSettings({ ...defaultSettings, ...settings });
+    lastCacheCheck = Date.now();
+    logger.withScope("Settings").info(
+      "saveSettings skipped during build phase, cached locally only"
+    );
+    return;
+  }
+
   try {
     await saveGistFile("settings.json", { ...defaultSettings, ...settings });
     cachedSettings = cloneSettings({ ...defaultSettings, ...settings });
     lastCacheCheck = Date.now();
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logger.withScope("Settings").error("Failed to save settings to Gist:", error);
-    throw new Error("Could not save settings data.");
+    throw new Error(`Could not save settings data: ${message}`);
   }
 }
 
-// 对测试暴露：清除内存缓存
+// =======================
+// 测试辅助
+// =======================
 export async function __clearSettingsCacheForTests__(): Promise<void> {
   cachedSettings = null;
   lastCacheCheck = 0;
