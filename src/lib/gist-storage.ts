@@ -1,16 +1,15 @@
 "use server";
 
-import fetch from "node-fetch";
 import { logger } from "@/lib/logger";
 
 const GITHUB_TOKEN = process.env.GITHUB_ACCESS_TOKEN;
 const GIST_ID = process.env.GIST_ID;
 
+const IS_BUILD = process.env.NEXT_PHASE === "phase-production-build";
+
 // 内存缓存
 const cache: Record<string, { content: any; timestamp: number }> = {};
-const CACHE_TTL_MS = 30_000; // 30 秒缓存，减少 API 调用
-
-const IS_BUILD = process.env.NEXT_PHASE === "phase-production-build";
+const CACHE_TTL_MS = 30_000; // 30 秒缓存
 
 if (!GITHUB_TOKEN || !GIST_ID) {
   logger.withScope("Gist").warn(
@@ -20,7 +19,7 @@ if (!GITHUB_TOKEN || !GIST_ID) {
 
 // 读取 Gist 文件
 export async function loadGistFile<T>(filename: string): Promise<T | null> {
-  if (IS_BUILD) return null; // 构建阶段不访问 Gist
+  if (IS_BUILD) return null;
   if (!GITHUB_TOKEN || !GIST_ID) return null;
 
   const cached = cache[filename];
@@ -36,6 +35,7 @@ export async function loadGistFile<T>(filename: string): Promise<T | null> {
         Accept: "application/vnd.github.v3+json",
       },
     });
+
     if (!res.ok) throw new Error(`Failed to fetch Gist: ${res.status}`);
 
     const gist = await res.json();
@@ -52,7 +52,7 @@ export async function loadGistFile<T>(filename: string): Promise<T | null> {
 
 // 写入 Gist 文件
 export async function saveGistFile(filename: string, data: unknown) {
-  if (IS_BUILD) return; // 构建阶段不写
+  if (IS_BUILD) return;
   if (!GITHUB_TOKEN || !GIST_ID) {
     throw new Error("GITHUB_TOKEN and GIST_ID must be set to save Gist");
   }
@@ -69,7 +69,6 @@ export async function saveGistFile(filename: string, data: unknown) {
       }),
     });
 
-    // 更新内存缓存
     cache[filename] = { content: data, timestamp: Date.now() };
   } catch (err) {
     logger.withScope("Gist").error("saveGistFile failed:", err);
