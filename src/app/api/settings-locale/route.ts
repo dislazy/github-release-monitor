@@ -3,14 +3,8 @@ import { getLocaleSetting } from "@/lib/settings-storage";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  try {
-    const locale = await getLocaleSetting();
-    return NextResponse.json({ locale });
-  } catch {
-    return NextResponse.json(
-      { locale: undefined, error: "settings_unavailable" },
-      { status: 500 },
-    );
-  }
+// ✅ 改为请求内部
+export async function GET(req: Request) {
+  const settings = await getSettings();
+  return new Response(JSON.stringify({ locale: settings.locale }));
 }
