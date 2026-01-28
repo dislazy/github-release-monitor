@@ -1,28 +1,21 @@
 "use server";
 
-import type { Stats } from "node:fs";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { defaultLocale, locales } from "@/i18n/routing";
 import { logger } from "@/lib/logger";
 import type { AppSettings, Locale } from "@/types";
 import { allPreReleaseTypes } from "@/types";
+import { defaultLocale, locales } from "@/i18n/routing";
 
-// process.env.DATA_ROOT or process.cwd
-const DATA_ROOT = process.env.DATA_ROOT || process.cwd();
-const dataFilePath = path.join(DATA_ROOT, "data", "settings.json");
-const dataDirPath = path.dirname(dataFilePath);
+import { loadGistFile, saveGistFile } from "./gist-storage";
 
-const hasGithubToken = Boolean(process.env.GITHUB_ACCESS_TOKEN?.trim());
-const defaultParallelRepoFetches = hasGithubToken ? 5 : 1;
+const CACHE_CHECK_INTERVAL_MS = 500;
 
 const defaultSettings: AppSettings = {
   timeFormat: "24h",
   locale: "en",
-  refreshInterval: 10, // in minutes
-  cacheInterval: 5, // in minutes
-  releasesPerPage: 30, // GitHub API default
-  parallelRepoFetches: defaultParallelRepoFetches,
+  refreshInterval: 10,
+  cacheInterval: 5,
+  releasesPerPage: 30,
+  parallelRepoFetches: Boolean(process.env.GITHUB_ACCESS_TOKEN?.trim()) ? 5 : 1,
   releaseChannels: ["stable"],
   preReleaseSubChannels: allPreReleaseTypes,
   showAcknowledge: true,
@@ -34,93 +27,54 @@ const defaultSettings: AppSettings = {
   appriseFormat: "text",
 };
 
-const CACHE_CHECK_INTERVAL_MS = 500;
-
 let cachedSettings: AppSettings | null = null;
-let cachedMtimeMs: number | null = null;
-let lastMtimeCheck = 0;
-async function ensureDataFileExists() {
-  try {
-    await fs.mkdir(dataDirPath, { recursive: true });
-    await fs.access(dataFilePath);
-  } catch {
-    await fs.writeFile(
-      dataFilePath,
-      JSON.stringify(defaultSettings, null, 2),
-      "utf8",
-    );
-    logger
-      .withScope("Settings")
-      .info(`Created settings data file at: ${dataFilePath}`);
-  }
-}
+let lastCacheCheck = 0;
 
+// 深度 clone，保持原来的语义
 function cloneSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
     releaseChannels: [...settings.releaseChannels],
     preReleaseSubChannels: settings.preReleaseSubChannels
-      ? [...(settings.preReleaseSubChannels ?? [])]
+      ? [...settings.preReleaseSubChannels]
       : undefined,
   };
 }
 
-async function refreshCache(existingStat?: Stats) {
+// 从 Gist 加载并刷新内存缓存
+async function refreshCache(): Promise<void> {
   try {
-    const [fileContent, stat] = await Promise.all([
-      fs.readFile(dataFilePath, "utf8"),
-      existingStat ? Promise.resolve(existingStat) : fs.stat(dataFilePath),
-    ]);
-    const data = JSON.parse(fileContent);
-    const merged = { ...defaultSettings, ...(data as Partial<AppSettings>) };
-    cachedSettings = cloneSettings(merged);
-    cachedMtimeMs = stat.mtimeMs;
-    lastMtimeCheck = Date.now();
+    const data = (await loadGistFile<AppSettings>("settings.json")) ?? {};
+    cachedSettings = cloneSettings({ ...defaultSettings, ...data });
   } catch (error) {
-    logger
-      .withScope("Settings")
-      .error("Error reading or parsing settings.json:", error);
+    logger.withScope("Settings").error("Failed to load settings from Gist:", error);
     cachedSettings = cloneSettings(defaultSettings);
-    cachedMtimeMs = null;
-    lastMtimeCheck = Date.now();
   }
+  lastCacheCheck = Date.now();
 }
 
-async function ensureCache() {
-  await ensureDataFileExists();
-
+// 确保缓存有效
+async function ensureCache(): Promise<void> {
   if (!cachedSettings) {
     await refreshCache();
     return;
   }
 
   const now = Date.now();
-  if (now - lastMtimeCheck < CACHE_CHECK_INTERVAL_MS) {
-    return;
-  }
+  if (now - lastCacheCheck < CACHE_CHECK_INTERVAL_MS) return;
 
-  try {
-    const stat = await fs.stat(dataFilePath);
-    lastMtimeCheck = now;
-    if (cachedMtimeMs === null || stat.mtimeMs !== cachedMtimeMs) {
-      await refreshCache(stat);
-    }
-  } catch (error) {
-    logger.withScope("Settings").error("Error accessing settings.json:", error);
-    cachedSettings = cloneSettings(defaultSettings);
-    cachedMtimeMs = null;
-    lastMtimeCheck = now;
-  }
+  // 触发一次刷新（Gist 有缓存保护，1 分钟内不会重复请求）
+  await refreshCache();
 }
 
+// 对外接口：获取全部设置
 export async function getSettings(): Promise<AppSettings> {
   await ensureCache();
-  if (!cachedSettings) {
-    throw new Error("Settings cache is not available");
-  }
+  if (!cachedSettings) throw new Error("Settings cache is unavailable");
   return cloneSettings(cachedSettings);
 }
 
+// 对外接口：获取 locale
 export async function getLocaleSetting(): Promise<Locale> {
   await ensureCache();
   const locale = cachedSettings?.locale;
@@ -129,29 +83,20 @@ export async function getLocaleSetting(): Promise<Locale> {
     : defaultLocale;
 }
 
+// 对外接口：保存设置
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  await ensureDataFileExists();
   try {
-    const fileContent = JSON.stringify(settings, null, 2);
-    await fs.writeFile(dataFilePath, fileContent, "utf8");
-    const stat = await fs.stat(dataFilePath);
-    const merged = {
-      ...defaultSettings,
-      ...(settings as Partial<AppSettings>),
-    };
-    cachedSettings = cloneSettings(merged);
-    cachedMtimeMs = stat.mtimeMs;
-    lastMtimeCheck = Date.now();
+    await saveGistFile("settings.json", { ...defaultSettings, ...settings });
+    cachedSettings = cloneSettings({ ...defaultSettings, ...settings });
+    lastCacheCheck = Date.now();
   } catch (error) {
-    logger
-      .withScope("Settings")
-      .error("Error writing to settings.json:", error);
+    logger.withScope("Settings").error("Failed to save settings to Gist:", error);
     throw new Error("Could not save settings data.");
   }
 }
 
+// 对测试暴露：清除内存缓存
 export async function __clearSettingsCacheForTests__(): Promise<void> {
   cachedSettings = null;
-  cachedMtimeMs = null;
-  lastMtimeCheck = 0;
+  lastCacheCheck = 0;
 }

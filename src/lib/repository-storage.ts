@@ -1,67 +1,64 @@
 "use server";
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { logger } from "@/lib/logger";
 import type { Repository } from "@/types";
+import { loadGistFile, saveGistFile } from "./gist-storage";
 
-// Resolve the path to the data file.
-// Using process.env.DATA_ROOT or process.cwd() ensures the path is correct whether running in dev or prod.
-const DATA_ROOT = process.env.DATA_ROOT || process.cwd();
-const dataFilePath = path.join(DATA_ROOT, "data", "repositories.json");
-const dataDirPath = path.dirname(dataFilePath);
+// 内存缓存，防止频繁 GET
+let cachedRepositories: Repository[] | null = null;
+let lastCacheCheck = 0;
+const CACHE_CHECK_INTERVAL_MS = 500;
 
-async function ensureDataFileExists() {
-  try {
-    // Ensure the directory exists first.
-    await fs.mkdir(dataDirPath, { recursive: true });
-    // Then check for the file.
-    await fs.access(dataFilePath);
-  } catch {
-    // File doesn't exist, create it with an empty array.
-    await fs.writeFile(dataFilePath, JSON.stringify([], null, 2), "utf8");
-    logger
-      .withScope("Repositories")
-      .info(`Created repository data file at: ${dataFilePath}`);
-  }
+// 深度 clone 防止外部修改
+function cloneRepositories(repos: Repository[]): Repository[] {
+  return repos.map(r => ({ ...r }));
 }
 
-export async function getRepositories(): Promise<Repository[]> {
-  await ensureDataFileExists();
+// 刷新内存缓存
+async function refreshCache(): Promise<void> {
   try {
-    const fileContent = await fs.readFile(dataFilePath, "utf8");
-    const data = JSON.parse(fileContent) as Repository[];
-    return data;
+    const data = (await loadGistFile<Repository[]>("repositories.json")) ?? [];
+    cachedRepositories = cloneRepositories(data);
   } catch (error) {
-    logger
-      .withScope("Repositories")
-      .error("Error reading or parsing repositories.json:", error);
-    // Return an empty array or throw an error, depending on desired behavior for a corrupted file.
-    return [];
+    logger.withScope("Repositories").error("Failed to load repositories from Gist:", error);
+    cachedRepositories = [];
+  }
+  lastCacheCheck = Date.now();
+}
+
+// 确保缓存有效
+async function ensureCache(): Promise<void> {
+  if (!cachedRepositories) {
+    await refreshCache();
+    return;
+  }
+  const now = Date.now();
+  if (now - lastCacheCheck >= CACHE_CHECK_INTERVAL_MS) {
+    await refreshCache();
   }
 }
 
-export async function saveRepositories(
-  repositories: Repository[],
-): Promise<void> {
-  await ensureDataFileExists();
+// 对外接口：获取所有 repo
+export async function getRepositories(): Promise<Repository[]> {
+  await ensureCache();
+  return cachedRepositories ? cloneRepositories(cachedRepositories) : [];
+}
+
+// 对外接口：保存所有 repo
+export async function saveRepositories(repositories: Repository[]): Promise<void> {
   try {
-    const fileContent = JSON.stringify(repositories, null, 2);
-    await fs.writeFile(dataFilePath, fileContent, "utf8");
-  } catch (error: unknown) {
+    await saveGistFile("repositories.json", repositories);
+    cachedRepositories = cloneRepositories(repositories);
+    lastCacheCheck = Date.now();
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? String((error as { code?: unknown }).code)
-        : undefined;
-    logger
-      .withScope("Repositories")
-      .error("Error writing to repositories.json:", error);
-    // Throw a more specific error that can be caught by the server action
-    throw new Error(
-      `Failed to write to repository file. Please check file permissions. Server Error: ${
-        code || message
-      }`,
-    );
+    logger.withScope("Repositories").error("Failed to save repositories to Gist:", error);
+    throw new Error(`Failed to save repositories data: ${message}`);
   }
+}
+
+// 对测试暴露：清除缓存
+export async function __clearRepositoriesCacheForTests__(): Promise<void> {
+  cachedRepositories = null;
+  lastCacheCheck = 0;
 }
