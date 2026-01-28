@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import type { AppSettings } from "@/types";
 import { allPreReleaseTypes } from "@/types";
 import { loadGistFile, saveGistFile } from "./gist-storage";
+import { IS_BUILD_TIME } from "@/lib/runtime";
 
 const defaultSettings: AppSettings = {
   timeFormat: "24h",
@@ -29,7 +30,7 @@ const IS_BUILD = process.env.NEXT_PHASE === "phase-production-build";
 let gistDisabled = false;
 
 export async function getSettings(): Promise<AppSettings> {
-  if (IS_STATIC_PHASE) return { ...defaultSettings };
+  if (IS_BUILD_TIME) return { ...defaultSettings };
 
   if (cachedSettings) return cachedSettings;
   if (gistDisabled) return { ...defaultSettings };
