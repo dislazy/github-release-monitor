@@ -26,19 +26,20 @@ const defaultSettings: AppSettings = {
 let cachedSettings: AppSettings | null = null;
 const IS_BUILD = process.env.NEXT_PHASE === "phase-production-build";
 
+let gistDisabled = false;
+
 export async function getSettings(): Promise<AppSettings> {
-  if (IS_BUILD) {
-    if (!cachedSettings) cachedSettings = { ...defaultSettings };
-    return cachedSettings;
-  }
+  if (IS_STATIC_PHASE) return { ...defaultSettings };
 
   if (cachedSettings) return cachedSettings;
+  if (gistDisabled) return { ...defaultSettings };
 
   try {
-    const data = (await loadGistFile<AppSettings>("settings.json")) ?? defaultSettings;
+    const data = await loadGistFile<AppSettings>("settings.json");
     cachedSettings = { ...defaultSettings, ...data };
     return cachedSettings;
   } catch (err) {
+    gistDisabled = true;
     logger.withScope("Settings").error("Failed to load settings from Gist:", err);
     cachedSettings = { ...defaultSettings };
     return cachedSettings;
