@@ -1,78 +1,78 @@
-// src/lib/gist-storage.ts
-import { getCache, setCache, clearCache } from "./gist-cache";
-import { withWriteLock } from "./gist-write-lock";
+"use server";
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
-const GIST_ID = process.env.GIST_ID!;
+import fetch from "node-fetch";
+import { logger } from "@/lib/logger";
+
+const GITHUB_TOKEN = process.env.GITHUB_ACCESS_TOKEN;
+const GIST_ID = process.env.GIST_ID;
+
+// 内存缓存
+const cache: Record<string, { content: any; timestamp: number }> = {};
+const CACHE_TTL_MS = 30_000; // 30 秒缓存，减少 API 调用
+
+const IS_BUILD = process.env.NEXT_PHASE === "phase-production-build";
 
 if (!GITHUB_TOKEN || !GIST_ID) {
-  throw new Error("GITHUB_TOKEN and GIST_ID must be set");
+  logger.withScope("Gist").warn(
+    "GITHUB_ACCESS_TOKEN or GIST_ID not set. Runtime Gist access will fail."
+  );
 }
 
-const API = "https://api.github.com";
-const GIST_CACHE_KEY = "GIST_FULL";
-const GIST_TTL = 60_000; // 60 秒（安全值）
+// 读取 Gist 文件
+export async function loadGistFile<T>(filename: string): Promise<T | null> {
+  if (IS_BUILD) return null; // 构建阶段不访问 Gist
+  if (!GITHUB_TOKEN || !GIST_ID) return null;
 
-async function request(method: string, path: string, body?: any) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: {
-      Authorization: `token ${GITHUB_TOKEN}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`GitHub API ${res.status}: ${text}`);
+  const cached = cache[filename];
+  const now = Date.now();
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.content as T;
   }
-  return res.json();
-}
 
-/**
- * 只在缓存失效时 GET 一次 Gist
- */
-async function loadWholeGist() {
-  const cached = getCache(GIST_CACHE_KEY);
-  if (cached) return cached;
-
-  const data = await request("GET", `/gists/${GIST_ID}`);
-  setCache(GIST_CACHE_KEY, data, GIST_TTL);
-  return data;
-}
-
-/**
- * 读取 Gist 中的某个 JSON 文件
- */
-export async function loadGistFile<T = any>(file: string): Promise<T | null> {
   try {
-    const gist = await loadWholeGist();
-    const content = gist.files?.[file]?.content;
-    if (!content) return null;
-    return JSON.parse(content);
-  } catch (e) {
-    console.warn("[gist] read failed, fallback to cache only", e);
-    return getCache(`FILE_${file}`);
-  }
-}
-
-/**
- * 写入某个文件（串行 + 清缓存）
- */
-export async function saveGistFile(file: string, data: any) {
-  const content = JSON.stringify(data, null, 2);
-
-  await withWriteLock(async () => {
-    await request("PATCH", `/gists/${GIST_ID}`, {
-      files: {
-        [file]: { content },
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        Accept: "application/vnd.github.v3+json",
       },
     });
+    if (!res.ok) throw new Error(`Failed to fetch Gist: ${res.status}`);
 
-    // 写成功后，清理缓存，防脏读
-    clearCache(GIST_CACHE_KEY);
-    setCache(`FILE_${file}`, data, GIST_TTL);
-  });
+    const gist = await res.json();
+    const fileContent = gist.files[filename]?.content;
+    const parsed: T | null = fileContent ? JSON.parse(fileContent) : null;
+
+    cache[filename] = { content: parsed, timestamp: now };
+    return parsed;
+  } catch (err) {
+    logger.withScope("Gist").error("loadGistFile failed:", err);
+    return null;
+  }
+}
+
+// 写入 Gist 文件
+export async function saveGistFile(filename: string, data: unknown) {
+  if (IS_BUILD) return; // 构建阶段不写
+  if (!GITHUB_TOKEN || !GIST_ID) {
+    throw new Error("GITHUB_TOKEN and GIST_ID must be set to save Gist");
+  }
+
+  try {
+    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+      body: JSON.stringify({
+        files: { [filename]: { content: JSON.stringify(data, null, 2) } },
+      }),
+    });
+
+    // 更新内存缓存
+    cache[filename] = { content: data, timestamp: Date.now() };
+  } catch (err) {
+    logger.withScope("Gist").error("saveGistFile failed:", err);
+    throw err;
+  }
 }

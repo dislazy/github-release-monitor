@@ -6,17 +6,33 @@ import { SettingsForm } from "@/components/settings-form";
 import { getSettings } from "@/lib/settings-storage";
 import type { AppSettings } from "@/types";
 
-export default async function SettingsPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
+export default async function SettingsPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
-  const t = await getTranslations({
-    locale: locale,
-    namespace: "SettingsPage",
-  });
-  const currentSettings: AppSettings = await getSettings();
+  const t = await getTranslations({ locale, namespace: "SettingsPage" });
+
+  let currentSettings: AppSettings;
+  try {
+    currentSettings = await getSettings();
+  } catch {
+    currentSettings = {
+      timeFormat: "24h",
+      locale: "en",
+      refreshInterval: 10,
+      cacheInterval: 5,
+      releasesPerPage: 30,
+      parallelRepoFetches: 1,
+      releaseChannels: ["stable"],
+      preReleaseSubChannels: [],
+      showAcknowledge: true,
+      showMarkAsNew: true,
+      appriseMaxCharacters: 1800,
+      appriseTags: undefined,
+      appriseFormat: "text",
+      includeRegex: undefined,
+      excludeRegex: undefined,
+    };
+  }
+
   const isAppriseConfigured = !!process.env.APPRISE_URL;
   const isGithubTokenSet = !!process.env.GITHUB_ACCESS_TOKEN?.trim();
   const updateNotice = await getUpdateNotificationState();
@@ -26,9 +42,7 @@ export default async function SettingsPage({
       <Header locale={locale} updateNotice={updateNotice} />
       <main className="container mx-auto px-4 py-8 md:px-6">
         <div className="mx-auto max-w-2xl">
-          <h2 className="mb-4 text-3xl font-bold tracking-tight break-words">
-            {t("title")}
-          </h2>
+          <h2 className="mb-4 text-3xl font-bold tracking-tight break-words">{t("title")}</h2>
           <OfflineInlineNotice />
           <div className="h-2" />
           <SettingsForm
