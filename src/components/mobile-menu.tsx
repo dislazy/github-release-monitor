@@ -90,7 +90,7 @@ export function MobileMenu({ onLogout, isLoggingOut }: MobileMenuProps) {
     candidates.add(normalizePath(href));
 
     const routeConfig = pathnames[href];
-    const localizedPath = routeConfig?.[locale as "en" | "de"];
+    const localizedPath = routeConfig?.[locale as "en" | "de" | "zh"];
     if (localizedPath) {
       candidates.add(normalizePath(localizedPath));
     }

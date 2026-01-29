@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { de } from "date-fns/locale";
+import { de, zhCN } from "date-fns/locale";  // 添加 zhCN
 import {
   AlertTriangle,
   BellPlus,
@@ -142,7 +142,7 @@ export function ReleaseCard({ enrichedRelease, settings }: ReleaseCardProps) {
         setTimeAgo(
           formatDistanceToNowStrict(new Date(dateToUse), {
             addSuffix: true,
-            locale: locale === "de" ? de : undefined,
+            locale: locale === "de" ? de : locale === "zh" ? zhCN : undefined,
           }),
         );
       }
@@ -151,7 +151,7 @@ export function ReleaseCard({ enrichedRelease, settings }: ReleaseCardProps) {
         setCheckedAgo(
           formatDistanceToNowStrict(new Date(release.fetched_at), {
             addSuffix: true,
-            locale: locale === "de" ? de : undefined,
+            locale: locale === "de" ? de : locale === "zh" ? zhCN : undefined,
           }),
         );
       }

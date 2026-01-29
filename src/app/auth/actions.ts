@@ -92,7 +92,7 @@ export async function logout() {
   logger.withScope("Auth").info(`User '${user}' logged out`);
   session.destroy();
 
-  const loginPath = pathnames["/login"][locale as "en" | "de"];
+  const loginPath = pathnames["/login"][locale as "en" | "de" | "zh"];
   revalidatePath("/");
   await redirectLocalized(loginPath, locale);
 }

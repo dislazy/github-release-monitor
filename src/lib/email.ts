@@ -26,7 +26,7 @@ export async function getFormattedDate(
     hour12: timeFormat === "12h",
   };
   const textFormattingLocale =
-    locale === "de" ? "de-DE" : timeFormat === "12h" ? "en-US" : "en-GB";
+    locale === "de" ? "de-DE" : locale === "zh" ? "zh-CN" : timeFormat === "12h" ? "en-US" : "en-GB";
   const textDate = date.toLocaleString(
     textFormattingLocale,
     textDateFormattingOptions,
