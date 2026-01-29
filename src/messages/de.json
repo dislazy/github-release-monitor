@@ -111,6 +111,7 @@
     "language_label": "Sprache",
     "language_en": "Englisch",
     "language_de": "Deutsch",
+    "language_zh": "Chinese (Simplified)",
     "language_placeholder": "Sprache auswählen",
     "toast_success_title": "Erfolg",
     "toast_success_description": "Einstellungen erfolgreich aktualisiert.",

@@ -104,7 +104,7 @@ export type AppriseStatus = {
 };
 
 // App Settings
-export type Locale = "en" | "de";
+export type Locale = "en" | "de" | "zh";
 export type TimeFormat = "12h" | "24h";
 export type ReleaseChannel = "stable" | "prerelease" | "draft";
 export type PreReleaseChannelType =

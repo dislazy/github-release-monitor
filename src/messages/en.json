@@ -111,6 +111,7 @@
     "language_label": "Language",
     "language_en": "English",
     "language_de": "German",
+    "language_zh": "Chinese (Simplified)",
     "language_placeholder": "Select a language",
     "toast_success_title": "Success",
     "toast_success_description": "Settings updated successfully.",

@@ -655,6 +655,7 @@ export function SettingsForm({
                 <SelectContent>
                   <SelectItem value="en">{t("language_en")}</SelectItem>
                   <SelectItem value="de">{t("language_de")}</SelectItem>
+                  <SelectItem value="zh">{t("language_zh")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

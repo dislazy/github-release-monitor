@@ -105,7 +105,7 @@ export async function middleware(request: NextRequest) {
 
   const loginPaths = pathnames["/login"];
   const loginPathForLocale =
-    loginPaths[currentLocale as "en" | "de"] || loginPaths.en;
+    loginPaths[currentLocale as "en" | "de" | "zh"] || loginPaths.en;
   const isLoginPage = request.nextUrl.pathname.endsWith(loginPathForLocale);
 
   const cookieStore = request.cookies;
