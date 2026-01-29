@@ -8,9 +8,9 @@ import { IS_BUILD_TIME } from "@/lib/runtime";
 
 const defaultSettings: AppSettings = {
   timeFormat: "24h",
-  locale: "en",
-  refreshInterval: 10,
-  cacheInterval: 5,
+  locale: "zh",
+  refreshInterval: 60,
+  cacheInterval: 30,
   releasesPerPage: 30,
   parallelRepoFetches: 1,
   releaseChannels: ["stable"],
